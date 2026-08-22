@@ -14,6 +14,14 @@ from tests.utils.factories import random_string
 from tests.utils.fixture_schemas import TestUser
 
 
+def test_pantry_plan_ai_schema_uses_plain_string_recipe_ids():
+    schema = PantryPlanAIResponse.model_json_schema()
+    recipe_id = schema["$defs"]["PantryPlanAIChoice"]["properties"]["recipe_id"]
+
+    assert recipe_id["type"] == "string"
+    assert "format" not in recipe_id
+
+
 def test_recipe_revision_restore(api_client: TestClient, unique_user: TestUser):
     name = random_string(12)
     slug = api_client.post(api_routes.recipes, json={"name": name}, headers=unique_user.token).json()
@@ -145,12 +153,12 @@ def test_pantry_plan_recommendations_are_limited_to_candidates(
         return PantryPlanAIResponse(
             choices=[
                 PantryPlanAIChoice(
-                    recipe_id=recipe.id,
+                    recipe_id=str(recipe.id),
                     date=date(2026, 8, 22),
                     reason="Uses the food marked on hand.",
                 ),
                 PantryPlanAIChoice(
-                    recipe_id=uuid4(),
+                    recipe_id=str(uuid4()),
                     date=date(2026, 8, 23),
                     reason="This hallucinated ID must be rejected.",
                 ),
