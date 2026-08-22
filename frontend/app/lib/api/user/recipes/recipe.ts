@@ -21,6 +21,7 @@ import type {
 import type { SSEDataEventDone, SSEDataEventMessage } from "~/lib/api/types/response";
 import type { ApiRequestInstance, PaginationData, RequestResponse } from "~/lib/api/types/non-generated";
 import { SSEDataEventStatus } from "~/lib/api/types/non-generated";
+import type { RecipeRevision, RecipeReviewResponse, RecipeReviewSuggestion } from "~/lib/api/types/recipe-coach";
 
 export type Parser = "nlp" | "brute" | "openai";
 
@@ -51,6 +52,10 @@ const routes = {
   recipesRecipeSlug: (recipe_slug: string) => `${prefix}/recipes/${recipe_slug}`,
   recipesRecipeSlugImage: (recipe_slug: string) => `${prefix}/recipes/${recipe_slug}/image`,
   recipesRecipeSlugAssets: (recipe_slug: string) => `${prefix}/recipes/${recipe_slug}/assets`,
+  recipesRecipeSlugReview: (recipe_slug: string) => `${prefix}/recipes/${recipe_slug}/review`,
+  recipesRecipeSlugReviewApply: (recipe_slug: string) => `${prefix}/recipes/${recipe_slug}/review/apply`,
+  recipesRecipeSlugRevisions: (recipe_slug: string) => `${prefix}/recipes/${recipe_slug}/revisions`,
+  recipesRecipeSlugRevisionRestore: (recipe_slug: string, revisionId: string) => `${prefix}/recipes/${recipe_slug}/revisions/${revisionId}/restore`,
 
   recipesSlugComments: (slug: string) => `${prefix}/recipes/${slug}/comments`,
   recipesSlugCommentsId: (slug: string, id: number) => `${prefix}/recipes/${slug}/comments/${id}`,
@@ -118,6 +123,22 @@ export class RecipeAPI extends BaseCRUDAPI<CreateRecipe, Recipe, Recipe> {
     return await this.requests.get<RecipeSuggestionResponse>(
       route(routes.recipesSuggestions, { ...q, foods, tools }),
     );
+  }
+
+  async review(slug: string, goal: string) {
+    return await this.requests.post<RecipeReviewResponse>(routes.recipesRecipeSlugReview(slug), { goal });
+  }
+
+  async applyReview(slug: string, suggestions: RecipeReviewSuggestion[]) {
+    return await this.requests.post<Recipe>(routes.recipesRecipeSlugReviewApply(slug), { suggestions });
+  }
+
+  async getRevisions(slug: string) {
+    return await this.requests.get<RecipeRevision[]>(routes.recipesRecipeSlugRevisions(slug));
+  }
+
+  async restoreRevision(slug: string, revisionId: string) {
+    return await this.requests.post<Recipe>(routes.recipesRecipeSlugRevisionRestore(slug, revisionId), {});
   }
 
   async createAsset(recipeSlug: string, payload: CreateAsset) {

@@ -95,6 +95,8 @@ households_invitations_email = "/api/households/invitations/email"
 """`/api/households/invitations/email`"""
 households_mealplans = "/api/households/mealplans"
 """`/api/households/mealplans`"""
+households_mealplans_pantry_suggestions = "/api/households/mealplans/pantry-suggestions"
+"""`/api/households/mealplans/pantry-suggestions`"""
 households_mealplans_random = "/api/households/mealplans/random"
 """`/api/households/mealplans/random`"""
 households_mealplans_rules = "/api/households/mealplans/rules"
@@ -531,6 +533,26 @@ def recipes_slug_image(slug):
 def recipes_slug_last_made(slug):
     """`/api/recipes/{slug}/last-made`"""
     return f"{prefix}/recipes/{slug}/last-made"
+
+
+def recipes_slug_review(slug):
+    """`/api/recipes/{slug}/review`"""
+    return f"{prefix}/recipes/{slug}/review"
+
+
+def recipes_slug_review_apply(slug):
+    """`/api/recipes/{slug}/review/apply`"""
+    return f"{prefix}/recipes/{slug}/review/apply"
+
+
+def recipes_slug_revisions(slug):
+    """`/api/recipes/{slug}/revisions`"""
+    return f"{prefix}/recipes/{slug}/revisions"
+
+
+def recipes_slug_revisions_revision_id_restore(slug, revision_id):
+    """`/api/recipes/{slug}/revisions/{revision_id}/restore`"""
+    return f"{prefix}/recipes/{slug}/revisions/{revision_id}/restore"
 
 
 def recipes_timeline_events_item_id(item_id):

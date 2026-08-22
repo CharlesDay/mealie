@@ -1,10 +1,13 @@
-from datetime import date
+import json
+from datetime import date, timedelta
 from functools import cached_property
 
+import sqlalchemy as sa
 from dateutil.tz import tzlocal
 from fastapi import APIRouter, Depends, HTTPException
 
 from mealie.core.exceptions import mealie_registered_exceptions
+from mealie.db.models.recipe.ingredient import IngredientFoodModel, households_to_ingredient_foods
 from mealie.repos.all_repositories import get_repositories
 from mealie.repos.repository_meals import RepositoryMeals
 from mealie.routes._base import controller
@@ -15,6 +18,14 @@ from mealie.schema.meal_plan import CreatePlanEntry, ReadPlanEntry, SavePlanEntr
 from mealie.schema.meal_plan.new_meal import CreateRandomEntry, PlanEntryPagination, PlanEntryType
 from mealie.schema.meal_plan.plan_rules import PlanRulesDay
 from mealie.schema.recipe.recipe import Recipe
+from mealie.schema.recipe.recipe_coach import (
+    PantryPlanAIResponse,
+    PantryPlanRequest,
+    PantryPlanResponse,
+    PantryPlanSuggestion,
+)
+from mealie.schema.recipe.recipe_ingredient import IngredientFood
+from mealie.schema.recipe.recipe_suggestion import RecipeSuggestionQuery
 from mealie.schema.response.pagination import PaginationQuery
 from mealie.schema.response.responses import ErrorResponse
 from mealie.services.event_bus_service.event_types import (
@@ -22,6 +33,7 @@ from mealie.services.event_bus_service.event_types import (
     EventOperation,
     EventTypes,
 )
+from mealie.services.openai import OpenAIService
 
 router = APIRouter(prefix="/households/mealplans", tags=["Households: Mealplans"])
 
@@ -169,6 +181,85 @@ class GroupMealplanController(BaseCrudController):
         )
 
         return result
+
+    @router.post("/pantry-suggestions", response_model=PantryPlanResponse)
+    async def suggest_from_pantry(self, request: PantryPlanRequest) -> PantryPlanResponse:
+        pantry_models = self.session.scalars(
+            sa.select(IngredientFoodModel)
+            .join(
+                households_to_ingredient_foods,
+                IngredientFoodModel.id == households_to_ingredient_foods.c.food_id,
+            )
+            .where(households_to_ingredient_foods.c.household_id == self.household_id)
+            .order_by(IngredientFoodModel.name)
+        ).all()
+        pantry_foods = [IngredientFood.model_validate(food) for food in pantry_models]
+        if not pantry_foods:
+            return PantryPlanResponse(pantry_foods=[], suggestions=[])
+
+        recipes = get_repositories(self.session, group_id=self.group_id, household_id=None).recipes.by_user(
+            self.user.id
+        )
+        candidates = recipes.find_suggested_recipes(
+            RecipeSuggestionQuery(
+                limit=min(request.days * 4, 40),
+                max_missing_foods=request.max_missing_foods,
+                max_missing_tools=10,
+                include_foods_on_hand=False,
+                include_tools_on_hand=True,
+            ),
+            food_ids=[food.id for food in pantry_foods],
+        )
+        if not candidates:
+            return PantryPlanResponse(pantry_foods=pantry_foods, suggestions=[])
+
+        dates = [request.start_date + timedelta(days=offset) for offset in range(request.days)]
+        candidate_payload = [
+            {
+                "recipeId": str(item.recipe.id),
+                "name": item.recipe.name,
+                "missingFoods": [food.name for food in item.missing_foods],
+                "categories": [category.name for category in item.recipe.recipe_category or []],
+            }
+            for item in candidates
+        ]
+        ai = OpenAIService(self.repos)
+        response = await ai.get_response(
+            ai.get_prompt("mealplans.plan-from-pantry"),
+            json.dumps(
+                {
+                    "dates": [value.isoformat() for value in dates],
+                    "preferences": request.preferences,
+                    "pantryFoods": [food.name for food in pantry_foods],
+                    "candidates": candidate_payload,
+                }
+            ),
+            response_schema=PantryPlanAIResponse,
+        )
+        if response is None:
+            return PantryPlanResponse(pantry_foods=pantry_foods, suggestions=[])
+
+        by_id = {item.recipe.id: item for item in candidates}
+        valid_dates = set(dates)
+        seen_dates: set[date] = set()
+        suggestions: list[PantryPlanSuggestion] = []
+        for choice in response.choices:
+            candidate = by_id.get(choice.recipe_id)
+            if candidate is None or choice.date not in valid_dates or choice.date in seen_dates:
+                continue
+            seen_dates.add(choice.date)
+            suggestions.append(
+                PantryPlanSuggestion(
+                    recipe=candidate.recipe,
+                    date=choice.date,
+                    entry_type=choice.entry_type,
+                    reason=choice.reason,
+                    missing_foods=candidate.missing_foods,
+                )
+            )
+
+        suggestions.sort(key=lambda item: item.date)
+        return PantryPlanResponse(pantry_foods=pantry_foods, suggestions=suggestions)
 
     @router.get("/{item_id}", response_model=ReadPlanEntry)
     def get_one(self, item_id: int):
