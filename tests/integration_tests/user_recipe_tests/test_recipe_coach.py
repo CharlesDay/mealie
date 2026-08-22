@@ -175,9 +175,9 @@ def test_pantry_plan_recommendations_are_limited_to_candidates(
 
     assert response.status_code == 200
     data = response.json()
-    assert len(data["suggestions"]) == 1
-    assert data["suggestions"][0]["recipe"]["id"] == str(recipe.id)
-    assert data["suggestions"][0]["missingFoods"] == []
+    assert len(data["suggestions"]) == 5
+    assert {item["recipe"]["id"] for item in data["suggestions"]} == {str(recipe.id)}
+    assert all(item["missingFoods"] == [] for item in data["suggestions"])
 
     unique_user.repos.recipes.delete(recipe.slug)
     unique_user.repos.ingredient_foods.delete(food.id)
@@ -236,9 +236,73 @@ def test_pantry_plan_allows_recipes_within_missing_limit_without_a_pantry_match(
 
     assert response.status_code == 200
     data = response.json()
-    assert [item["recipe"]["id"] for item in data["suggestions"]] == [str(recipe.id)]
-    assert len(data["suggestions"][0]["missingFoods"]) == 2
+    assert len(data["suggestions"]) == 5
+    assert {item["recipe"]["id"] for item in data["suggestions"]} == {str(recipe.id)}
+    assert all(len(item["missingFoods"]) == 2 for item in data["suggestions"])
 
     unique_user.repos.recipes.delete(recipe.slug)
     for food in [pantry_food, *missing_foods]:
         unique_user.repos.ingredient_foods.delete(food.id)
+
+
+def test_pantry_plan_fills_dates_omitted_by_ai(
+    api_client: TestClient,
+    unique_user: TestUser,
+    monkeypatch: MonkeyPatch,
+):
+    household = unique_user.repos.households.get_by_slug_or_id(unique_user.household_id)
+    assert household
+    food = unique_user.repos.ingredient_foods.create(
+        SaveIngredientFood(
+            id=uuid4(),
+            name=random_string(10),
+            group_id=unique_user.group_id,
+            households_with_ingredient_food=[household.slug],
+        )
+    )
+    recipes = [
+        unique_user.repos.recipes.create(
+            Recipe(
+                name=random_string(12),
+                user_id=unique_user.user_id,
+                group_id=unique_user.group_id,
+                recipe_ingredient=[RecipeIngredient(food_id=food.id, food=food)],
+                settings=RecipeSettings(),
+            )
+        )
+        for _ in range(3)
+    ]
+
+    async def fake_response(*_, **__):
+        return PantryPlanAIResponse(
+            choices=[
+                PantryPlanAIChoice(
+                    recipe_id=str(recipes[0].id),
+                    date=date(2026, 8, 22),
+                    reason="The AI selected only one recipe.",
+                )
+            ]
+        )
+
+    monkeypatch.setattr(OpenAIService, "get_response", fake_response)
+    response = api_client.post(
+        "/api/households/mealplans/pantry-suggestions",
+        json={"startDate": "2026-08-22", "days": 3, "maxMissingFoods": 0, "preferences": ""},
+        headers=unique_user.token,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["suggestions"]) == 5
+    assert {item["recipe"]["id"] for item in data["suggestions"]} == {str(recipe.id) for recipe in recipes}
+    assert [item["date"] for item in data["suggestions"]] == [
+        "2026-08-22",
+        "2026-08-22",
+        "2026-08-23",
+        "2026-08-23",
+        "2026-08-24",
+    ]
+
+    for recipe in recipes:
+        unique_user.repos.recipes.delete(recipe.slug)
+    unique_user.repos.ingredient_foods.delete(food.id)

@@ -87,6 +87,8 @@ class PantryPlanSuggestion(MealieModel):
     entry_type: PlanEntryType
     reason: str
     missing_foods: list[IngredientFood]
+    unlinked_ingredient_count: int = 0
+    makeable: bool
 
 
 class PantryPlanResponse(MealieModel):
