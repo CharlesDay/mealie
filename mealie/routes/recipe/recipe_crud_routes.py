@@ -48,6 +48,7 @@ from mealie.schema.recipe.recipe_coach import (
     RecipeReviewResponse,
     RecipeRevisionOut,
 )
+from mealie.schema.recipe.recipe_conversion import RecipeConversionRequest, RecipeConversionResponse
 from mealie.schema.recipe.recipe_scraper import ScrapeRecipeAI, ScrapeRecipeTest
 from mealie.schema.recipe.recipe_suggestion import RecipeSuggestionQuery, RecipeSuggestionResponse
 from mealie.schema.recipe.request_helpers import (
@@ -75,6 +76,7 @@ from mealie.services.openai import OpenAINotEnabledException
 from mealie.services.recipe.ai_recipe_service import AIProviderNotEnabledError, AIRecipeService
 from mealie.services.recipe.import_workflow.exceptions import NoRecipeDataError
 from mealie.services.recipe.recipe_coach_service import RecipeCoachService
+from mealie.services.recipe.recipe_conversion_service import RecipeConversionService
 from mealie.services.recipe.recipe_data_service import (
     InvalidDomainError,
     NotAnImageError,
@@ -568,6 +570,17 @@ class RecipeController(BaseRecipeController):
         recipe = self.service.get_one(slug)
         coach = RecipeCoachService(self.repos, self.user, self.household, translator=self.translator)
         return await coach.review(recipe, request.goal)
+
+    @router.post("/{slug}/convert-units", response_model=RecipeConversionResponse)
+    def convert_recipe_units(self, slug: str, request: RecipeConversionRequest) -> RecipeConversionResponse:
+        current = self.service.get_one(slug)
+        if request.recipe.id != current.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=ErrorResponse.respond(message="The recipe does not match the requested conversion target."),
+            )
+        converter = RecipeConversionService(self.repos, self.user, self.household, translator=self.translator)
+        return converter.convert(request.recipe, request.target)
 
     @router.post("/{slug}/review/apply", response_model=Recipe)
     def apply_recipe_review(self, slug: str, request: ApplyRecipeReviewRequest) -> Recipe:

@@ -64,7 +64,7 @@
             <RecipePageIngredientEditor v-if="isEditForm" v-model="recipe" />
           </div>
           <div>
-            <RecipePageScale v-model="scale" :recipe="recipe" />
+            <RecipePageScale v-model="scale" :recipe="recipe" @converted="applyConvertedRecipe" />
           </div>
 
           <!--
@@ -147,7 +147,7 @@
       <v-row style="height: 100%" no-gutters class="overflow-hidden">
         <v-col cols="12" sm="5" class="overflow-y-auto pl-4 pr-3 py-2" style="height: 100%">
           <div class="d-flex align-center">
-            <RecipePageScale v-model="scale" :recipe="recipe" />
+            <RecipePageScale v-model="scale" :recipe="recipe" @converted="applyConvertedRecipe" />
           </div>
           <RecipePageIngredientToolsView
             v-if="!isEditForm"
@@ -179,7 +179,7 @@
     </v-sheet>
     <v-sheet v-show="isCookMode && hasLinkedIngredients">
       <div class="mt-2 px-2 px-md-4">
-        <RecipePageScale v-model="scale" :recipe="recipe" />
+        <RecipePageScale v-model="scale" :recipe="recipe" @converted="applyConvertedRecipe" />
       </div>
       <RecipePageInstructions
         v-model="recipe.recipeInstructions"
@@ -426,6 +426,10 @@ async function saveRecipe() {
 function replaceRecipe(updated: Recipe) {
   recipe.value = updated as NoUndefinedField<Recipe>;
   originalRecipe.value = deepCopy(recipe.value);
+}
+
+function applyConvertedRecipe(updated: Recipe) {
+  recipe.value = updated as NoUndefinedField<Recipe>;
 }
 
 async function saveParsedIngredients(ingredients: NoUndefinedField<RecipeIngredient[]>) {
