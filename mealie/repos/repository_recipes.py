@@ -363,12 +363,16 @@ class RepositoryRecipes(HouseholdRepositoryGeneric[Recipe, RecipeModel]):
         params: RecipeSuggestionQuery,
         food_ids: list[UUID4] | None = None,
         tool_ids: list[UUID4] | None = None,
+        *,
+        require_food_match: bool = True,
+        prefer_food_matches: bool = False,
     ) -> list[RecipeSuggestionResponseItem]:
         """
         Queries all recipes and returns the ones that are missing the least amount of foods and tools.
 
         Results are ordered first by number of missing tools, then foods, and finally by the user-specified order.
-        If foods are provided, the query will prefer recipes with more matches to user-provided foods.
+        If foods are provided, the query can require a match and prefer recipes
+        with more matches to user-provided foods.
         """
 
         if not params.order_by:
@@ -448,26 +452,43 @@ class RepositoryRecipes(HouseholdRepositoryGeneric[Recipe, RecipeModel]):
                 .group_by(ingredients_alias.recipe_id)
                 .subquery()
             )
+            total_structured_foods_query = (
+                sa.select(ingredients_alias.recipe_id, sa.func.count().label("total_structured_foods_count"))
+                .filter(ingredients_alias.food_id.isnot(None))
+                .group_by(ingredients_alias.recipe_id)
+                .subquery()
+            )
             q = (
                 q.join(settings_alias, self.model.settings)
                 .outerjoin(unmatched_foods_query, self.model.id == unmatched_foods_query.c.recipe_id)
                 .outerjoin(total_user_foods_query, self.model.id == total_user_foods_query.c.recipe_id)
+                .outerjoin(total_structured_foods_query, self.model.id == total_structured_foods_query.c.recipe_id)
                 .filter(
                     sa.or_(
                         unmatched_foods_query.c.unmatched_foods_count.is_(None),
                         unmatched_foods_query.c.unmatched_foods_count <= params.max_missing_foods,
                     ),
                 )
-                .order_by(
-                    unmatched_foods_query.c.unmatched_foods_count.asc().nulls_first(),
-                    # favor recipes with more matched foods, in case the user is looking for something specific
-                    total_user_foods_query.c.total_user_foods_count.desc().nulls_last(),
-                )
             )
 
-            # only include recipes that have at least one food in the user's list
-            if user_food_ids:
+            if require_food_match:
+                # Generic recipe suggestions stay focused on the user's selected foods.
                 q = q.filter(total_user_foods_query.c.total_user_foods_count > 0)
+            else:
+                # Pantry planning can include recipes that need a small shop, but
+                # never recipes that have no structured ingredients to compare.
+                q = q.filter(total_structured_foods_query.c.total_structured_foods_count > 0)
+
+            if prefer_food_matches:
+                q = q.order_by(
+                    total_user_foods_query.c.total_user_foods_count.desc().nulls_last(),
+                    unmatched_foods_query.c.unmatched_foods_count.asc().nulls_first(),
+                )
+            else:
+                q = q.order_by(
+                    unmatched_foods_query.c.unmatched_foods_count.asc().nulls_first(),
+                    total_user_foods_query.c.total_user_foods_count.desc().nulls_last(),
+                )
 
         ## Add filters and loader options
         if self.group_id:

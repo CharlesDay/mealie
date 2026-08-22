@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from uuid import uuid4
 
@@ -180,3 +181,64 @@ def test_pantry_plan_recommendations_are_limited_to_candidates(
 
     unique_user.repos.recipes.delete(recipe.slug)
     unique_user.repos.ingredient_foods.delete(food.id)
+
+
+def test_pantry_plan_allows_recipes_within_missing_limit_without_a_pantry_match(
+    api_client: TestClient,
+    unique_user: TestUser,
+    monkeypatch: MonkeyPatch,
+):
+    household = unique_user.repos.households.get_by_slug_or_id(unique_user.household_id)
+    assert household
+    pantry_food = unique_user.repos.ingredient_foods.create(
+        SaveIngredientFood(
+            id=uuid4(),
+            name=random_string(10),
+            group_id=unique_user.group_id,
+            households_with_ingredient_food=[household.slug],
+        )
+    )
+    missing_foods = [
+        unique_user.repos.ingredient_foods.create(
+            SaveIngredientFood(id=uuid4(), name=random_string(10), group_id=unique_user.group_id)
+        )
+        for _ in range(2)
+    ]
+    recipe = unique_user.repos.recipes.create(
+        Recipe(
+            name=random_string(12),
+            user_id=unique_user.user_id,
+            group_id=unique_user.group_id,
+            recipe_ingredient=[RecipeIngredient(food_id=food.id, food=food) for food in missing_foods],
+            settings=RecipeSettings(),
+        )
+    )
+
+    async def fake_response(_, __, message: str, **___):
+        payload = json.loads(message)
+        assert str(recipe.id) in {candidate["recipeId"] for candidate in payload["candidates"]}
+        return PantryPlanAIResponse(
+            choices=[
+                PantryPlanAIChoice(
+                    recipe_id=str(recipe.id),
+                    date=date(2026, 8, 22),
+                    reason="Needs only two ingredients that are not on hand.",
+                )
+            ]
+        )
+
+    monkeypatch.setattr(OpenAIService, "get_response", fake_response)
+    response = api_client.post(
+        "/api/households/mealplans/pantry-suggestions",
+        json={"startDate": "2026-08-22", "days": 2, "maxMissingFoods": 2, "preferences": ""},
+        headers=unique_user.token,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert [item["recipe"]["id"] for item in data["suggestions"]] == [str(recipe.id)]
+    assert len(data["suggestions"][0]["missingFoods"]) == 2
+
+    unique_user.repos.recipes.delete(recipe.slug)
+    for food in [pantry_food, *missing_foods]:
+        unique_user.repos.ingredient_foods.delete(food.id)
