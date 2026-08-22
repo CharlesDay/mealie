@@ -18,14 +18,17 @@ concurrency:
 jobs:
   backend-tests:
     name: "Backend Server Tests"
+    if: github.repository == 'mealie-recipes/mealie'
     uses: ./.github/workflows/test-backend.yml
 
   frontend-tests:
     name: "Frontend Tests"
+    if: github.repository == 'mealie-recipes/mealie'
     uses: ./.github/workflows/test-frontend.yml
 
   build-package:
     name: Build Package
+    if: github.repository == 'mealie-recipes/mealie'
     uses: ./.github/workflows/build-package.yml
     with:
       tag: nightly
