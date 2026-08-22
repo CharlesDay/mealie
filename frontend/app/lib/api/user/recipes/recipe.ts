@@ -22,6 +22,7 @@ import type { SSEDataEventDone, SSEDataEventMessage } from "~/lib/api/types/resp
 import type { ApiRequestInstance, PaginationData, RequestResponse } from "~/lib/api/types/non-generated";
 import { SSEDataEventStatus } from "~/lib/api/types/non-generated";
 import type { RecipeRevision, RecipeReviewResponse, RecipeReviewSuggestion } from "~/lib/api/types/recipe-coach";
+import type { RecipeConversionResponse, RecipeUnitSystem } from "~/lib/api/types/recipe-conversion";
 
 export type Parser = "nlp" | "brute" | "openai";
 
@@ -56,6 +57,7 @@ const routes = {
   recipesRecipeSlugReviewApply: (recipe_slug: string) => `${prefix}/recipes/${recipe_slug}/review/apply`,
   recipesRecipeSlugRevisions: (recipe_slug: string) => `${prefix}/recipes/${recipe_slug}/revisions`,
   recipesRecipeSlugRevisionRestore: (recipe_slug: string, revisionId: string) => `${prefix}/recipes/${recipe_slug}/revisions/${revisionId}/restore`,
+  recipesRecipeSlugConvertUnits: (recipe_slug: string) => `${prefix}/recipes/${recipe_slug}/convert-units`,
 
   recipesSlugComments: (slug: string) => `${prefix}/recipes/${slug}/comments`,
   recipesSlugCommentsId: (slug: string, id: number) => `${prefix}/recipes/${slug}/comments/${id}`,
@@ -127,6 +129,13 @@ export class RecipeAPI extends BaseCRUDAPI<CreateRecipe, Recipe, Recipe> {
 
   async review(slug: string, goal: string) {
     return await this.requests.post<RecipeReviewResponse>(routes.recipesRecipeSlugReview(slug), { goal });
+  }
+
+  async convertUnits(slug: string, recipe: Recipe, target: RecipeUnitSystem) {
+    return await this.requests.post<RecipeConversionResponse>(routes.recipesRecipeSlugConvertUnits(slug), {
+      recipe,
+      target,
+    });
   }
 
   async applyReview(slug: string, suggestions: RecipeReviewSuggestion[]) {

@@ -58,6 +58,7 @@ from .recipe_comments import (
     RecipeCommentUpdate,
     UserBase,
 )
+from .recipe_conversion import RecipeConversionRequest, RecipeConversionResponse, RecipeUnitSystem
 from .recipe_image_types import RecipeImageTypes
 from .recipe_ingredient import (
     CreateIngredientFood,
@@ -145,6 +146,9 @@ __all__ = [
     "RecipeTagPagination",
     "RecipeTool",
     "RecipeToolPagination",
+    "RecipeConversionRequest",
+    "RecipeConversionResponse",
+    "RecipeUnitSystem",
     "ApplyRecipeReviewRequest",
     "PantryPlanAIChoice",
     "PantryPlanAIResponse",

@@ -515,6 +515,11 @@ def recipes_slug_comments(slug):
     return f"{prefix}/recipes/{slug}/comments"
 
 
+def recipes_slug_convert_units(slug):
+    """`/api/recipes/{slug}/convert-units`"""
+    return f"{prefix}/recipes/{slug}/convert-units"
+
+
 def recipes_slug_duplicate(slug):
     """`/api/recipes/{slug}/duplicate`"""
     return f"{prefix}/recipes/{slug}/duplicate"
