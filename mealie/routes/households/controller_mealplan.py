@@ -209,6 +209,8 @@ class GroupMealplanController(BaseCrudController):
                 include_tools_on_hand=True,
             ),
             food_ids=[food.id for food in pantry_foods],
+            require_food_match=False,
+            prefer_food_matches=True,
         )
         if not candidates:
             return PantryPlanResponse(pantry_foods=pantry_foods, suggestions=[])
