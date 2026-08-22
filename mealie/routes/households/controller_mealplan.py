@@ -25,7 +25,7 @@ from mealie.schema.recipe.recipe_coach import (
     PantryPlanSuggestion,
 )
 from mealie.schema.recipe.recipe_ingredient import IngredientFood
-from mealie.schema.recipe.recipe_suggestion import RecipeSuggestionQuery
+from mealie.schema.recipe.recipe_suggestion import RecipeSuggestionQuery, RecipeSuggestionResponseItem
 from mealie.schema.response.pagination import PaginationQuery
 from mealie.schema.response.responses import ErrorResponse
 from mealie.services.event_bus_service.event_types import (
@@ -194,15 +194,14 @@ class GroupMealplanController(BaseCrudController):
             .order_by(IngredientFoodModel.name)
         ).all()
         pantry_foods = [IngredientFood.model_validate(food) for food in pantry_models]
-        if not pantry_foods:
-            return PantryPlanResponse(pantry_foods=[], suggestions=[])
 
         recipes = get_repositories(self.session, group_id=self.group_id, household_id=None).recipes.by_user(
             self.user.id
         )
+        target_suggestion_count = max(5, request.days)
         candidates = recipes.find_suggested_recipes(
             RecipeSuggestionQuery(
-                limit=min(request.days * 4, 40),
+                limit=min(max(request.days * 4, target_suggestion_count), 40),
                 max_missing_foods=request.max_missing_foods,
                 max_missing_tools=10,
                 include_foods_on_hand=False,
@@ -212,6 +211,31 @@ class GroupMealplanController(BaseCrudController):
             require_food_match=False,
             prefer_food_matches=True,
         )
+        all_recipes = recipes.get_all()
+        recipe_details = {recipe.id: recipe for recipe in all_recipes}
+
+        # Once the best pantry matches have been collected, fill the candidate
+        # pool with the rest of the library. This guarantees useful meal ideas
+        # even when pantry linking is incomplete or a recipe needs a full shop.
+        candidate_ids = {candidate.recipe.id for candidate in candidates}
+        for recipe in all_recipes:
+            if recipe.id in candidate_ids:
+                continue
+            missing_foods: list[IngredientFood] = []
+            seen_food_ids = {food.id for food in pantry_foods}
+            for ingredient in recipe.recipe_ingredient:
+                if not ingredient.food or ingredient.food.id in seen_food_ids:
+                    continue
+                seen_food_ids.add(ingredient.food.id)
+                missing_foods.append(IngredientFood.model_validate(ingredient.food))
+            candidates.append(
+                RecipeSuggestionResponseItem(
+                    recipe=recipe,
+                    missing_foods=missing_foods,
+                    missing_tools=[],
+                )
+            )
+
         if not candidates:
             return PantryPlanResponse(pantry_foods=pantry_foods, suggestions=[])
 
@@ -238,10 +262,16 @@ class GroupMealplanController(BaseCrudController):
             ),
             response_schema=PantryPlanAIResponse,
         )
-        if response is None:
-            return PantryPlanResponse(pantry_foods=pantry_foods, suggestions=[])
+        response = response or PantryPlanAIResponse(choices=[])
 
         by_id = {str(item.recipe.id): item for item in candidates}
+
+        def unlinked_ingredient_count(candidate: RecipeSuggestionResponseItem) -> int:
+            return sum(
+                ingredient.food is None and ingredient.referenced_recipe is None
+                for ingredient in recipe_details[candidate.recipe.id].recipe_ingredient
+            )
+
         valid_dates = set(dates)
         seen_dates: set[date] = set()
         suggestions: list[PantryPlanSuggestion] = []
@@ -257,6 +287,32 @@ class GroupMealplanController(BaseCrudController):
                     entry_type=choice.entry_type,
                     reason=choice.reason,
                     missing_foods=candidate.missing_foods,
+                    unlinked_ingredient_count=unlinked_ingredient_count(candidate),
+                    makeable=not candidate.missing_foods and not unlinked_ingredient_count(candidate),
+                )
+            )
+
+        # Models occasionally return only a few choices even when they have
+        # suitable candidates for every requested date. Fill those omissions
+        # from the already-ranked, server-filtered candidates so the planner
+        # remains useful and never introduces an unvetted recipe.
+        selected_recipe_ids = {str(item.recipe.id) for item in suggestions}
+        remaining_candidates = [
+            candidate for candidate in candidates if str(candidate.recipe.id) not in selected_recipe_ids
+        ]
+        fallback_candidates = remaining_candidates or candidates
+        while len(suggestions) < target_suggestion_count:
+            candidate = fallback_candidates[(len(suggestions) - len(selected_recipe_ids)) % len(fallback_candidates)]
+            value = dates[len(suggestions) % len(dates)]
+            suggestions.append(
+                PantryPlanSuggestion(
+                    recipe=candidate.recipe,
+                    date=value,
+                    entry_type=PlanEntryType.dinner,
+                    reason="A top-ranked pantry match, selected to complete the plan.",
+                    missing_foods=candidate.missing_foods,
+                    unlinked_ingredient_count=unlinked_ingredient_count(candidate),
+                    makeable=not candidate.missing_foods and not unlinked_ingredient_count(candidate),
                 )
             )
 

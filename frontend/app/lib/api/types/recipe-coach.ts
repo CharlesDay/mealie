@@ -54,6 +54,8 @@ export interface PantryPlanSuggestion {
   entryType: PlanEntryType;
   reason: string;
   missingFoods: IngredientFood[];
+  unlinkedIngredientCount: number;
+  makeable: boolean;
 }
 
 export interface PantryPlanResponse {
