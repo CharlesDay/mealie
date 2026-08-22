@@ -10,9 +10,12 @@ RUN corepack enable
 
 WORKDIR /frontend
 
-COPY frontend .
+# Keep dependency installation cached when only application source changes.
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm clean-install
 
-RUN pnpm clean-install
+COPY frontend .
 
 ARG RECIPE_PRESS_URL=http://paprika-recipe-generator.home.arpa
 ENV NUXT_PUBLIC_RECIPE_PRESS_URL=$RECIPE_PRESS_URL
@@ -51,7 +54,8 @@ RUN apt-get update \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install uv
+RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
+    pip install uv
 
 # Install from the committed lockfile; never re-resolve. The rolling
 # `exclude-newer` cooling window (pyproject [tool.uv]) would otherwise make
@@ -111,7 +115,8 @@ FROM venv-builder-base AS venv-builder
 COPY --from=packages * /dist/
 
 # Install the wheel with exact versions of dependencies into the venv
-RUN . $VENV_PATH/bin/activate \
+RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
+    . $VENV_PATH/bin/activate \
     && pip install --require-hashes -r /dist/requirements.txt --find-links /dist
 
 ###############################################
