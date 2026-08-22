@@ -42,6 +42,12 @@ from mealie.schema.recipe.recipe import (
     RecipeSummary,
 )
 from mealie.schema.recipe.recipe_asset import RecipeAsset
+from mealie.schema.recipe.recipe_coach import (
+    ApplyRecipeReviewRequest,
+    RecipeReviewRequest,
+    RecipeReviewResponse,
+    RecipeRevisionOut,
+)
 from mealie.schema.recipe.recipe_scraper import ScrapeRecipeAI, ScrapeRecipeTest
 from mealie.schema.recipe.recipe_suggestion import RecipeSuggestionQuery, RecipeSuggestionResponse
 from mealie.schema.recipe.request_helpers import (
@@ -68,6 +74,7 @@ from mealie.services.event_bus_service.event_types import (
 from mealie.services.openai import OpenAINotEnabledException
 from mealie.services.recipe.ai_recipe_service import AIProviderNotEnabledError, AIRecipeService
 from mealie.services.recipe.import_workflow.exceptions import NoRecipeDataError
+from mealie.services.recipe.recipe_coach_service import RecipeCoachService
 from mealie.services.recipe.recipe_data_service import (
     InvalidDomainError,
     NotAnImageError,
@@ -555,6 +562,33 @@ class RecipeController(BaseRecipeController):
 
         # Response is returned directly, to avoid validation and improve performance
         return JSONBytes(content=json_compatible_response)
+
+    @router.post("/{slug}/review", response_model=RecipeReviewResponse)
+    async def review_recipe(self, slug: str, request: RecipeReviewRequest) -> RecipeReviewResponse:
+        recipe = self.service.get_one(slug)
+        coach = RecipeCoachService(self.repos, self.user, self.household, translator=self.translator)
+        return await coach.review(recipe, request.goal)
+
+    @router.post("/{slug}/review/apply", response_model=Recipe)
+    def apply_recipe_review(self, slug: str, request: ApplyRecipeReviewRequest) -> Recipe:
+        recipe = self.service.get_one(slug)
+        coach = RecipeCoachService(self.repos, self.user, self.household, translator=self.translator)
+        try:
+            updated = coach.apply(recipe, request.suggestions)
+        except ValueError as ex:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=ErrorResponse.respond(message=str(ex)),
+            ) from ex
+        return self.service.update_one(slug, updated, revision_source="ai-review")
+
+    @router.get("/{slug}/revisions", response_model=list[RecipeRevisionOut])
+    def get_recipe_revisions(self, slug: str) -> list[RecipeRevisionOut]:
+        return self.service.get_revisions(slug)
+
+    @router.post("/{slug}/revisions/{revision_id}/restore", response_model=Recipe)
+    def restore_recipe_revision(self, slug: str, revision_id: UUID) -> Recipe:
+        return self.service.restore_revision(slug, revision_id)
 
     @router.get("/{slug}", response_model=Recipe)
     def get_one(self, slug: str = Path(..., description="A recipe's slug or id")):

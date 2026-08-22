@@ -27,6 +27,7 @@ from .instruction import RecipeInstruction
 from .note import Note
 from .nutrition import Nutrition
 from .recipe_timeline import RecipeTimelineEvent
+from .revision import RecipeRevision
 from .settings import RecipeSettings
 from .shared import RecipeShareTokenModel
 from .tag import recipes_to_tags
@@ -130,6 +131,9 @@ class RecipeModel(SqlAlchemyBase, BaseMixins):
     timeline_events: Mapped[list[RecipeTimelineEvent]] = orm.relationship(
         "RecipeTimelineEvent", back_populates="recipe", cascade="all, delete, delete-orphan"
     )
+    revisions: Mapped[list[RecipeRevision]] = orm.relationship(
+        "RecipeRevision", back_populates="recipe", cascade="all, delete, delete-orphan"
+    )
 
     # Mealie Specific
     settings: Mapped[list["RecipeSettings"]] = orm.relationship(
@@ -175,6 +179,7 @@ class RecipeModel(SqlAlchemyBase, BaseMixins):
             "settings",
             "comments",
             "timeline_events",
+            "revisions",
         },
     )
 

@@ -1,11 +1,13 @@
 import { BaseCRUDAPI } from "../base/base-clients";
 import type { CreatePlanEntry, CreateRandomEntry, ReadPlanEntry, UpdatePlanEntry } from "~/lib/api/types/meal-plan";
+import type { PantryPlanRequest, PantryPlanResponse } from "~/lib/api/types/recipe-coach";
 
 const prefix = "/api";
 
 const routes = {
   mealplan: `${prefix}/households/mealplans`,
   random: `${prefix}/households/mealplans/random`,
+  pantrySuggestions: `${prefix}/households/mealplans/pantry-suggestions`,
   mealplanId: (id: string | number) => `${prefix}/households/mealplans/${id}`,
 };
 
@@ -15,5 +17,9 @@ export class MealPlanAPI extends BaseCRUDAPI<CreatePlanEntry, ReadPlanEntry, Upd
 
   async setRandom(payload: CreateRandomEntry) {
     return await this.requests.post<ReadPlanEntry>(routes.random, payload);
+  }
+
+  async getPantrySuggestions(payload: PantryPlanRequest) {
+    return await this.requests.post<PantryPlanResponse>(routes.pantrySuggestions, payload);
   }
 }

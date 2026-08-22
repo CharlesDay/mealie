@@ -70,6 +70,12 @@
           {{ $t('general.edit') }}
         </v-tab>
       </v-tabs>
+      <PantryMealPlanDialog
+        :start-date="weekRange.start"
+        :days="days.length"
+        class="ml-auto mr-2"
+        @planned="actions.refreshAll"
+      />
       <BaseButton
         v-if="route.name === TABS.view"
         color="info"
@@ -101,6 +107,7 @@
 <script setup lang="ts">
 import { isSameDay, addDays, parseISO, format, isValid } from "date-fns";
 import RecipeDialogAddToShoppingList from "~/components/Domain/Recipe/RecipeDialogAddToShoppingList.vue";
+import PantryMealPlanDialog from "~/components/Domain/MealPlan/PantryMealPlanDialog.vue";
 import { useHouseholdSelf } from "~/composables/use-households";
 import { useMealplans } from "~/composables/use-group-mealplan";
 import { useUserMealPlanPreferences } from "~/composables/use-users/preferences";

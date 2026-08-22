@@ -31,6 +31,11 @@
           @delete="deleteRecipe"
           @close="closeEditor"
         />
+        <RecipeCoachTools
+          v-if="isOwnGroup && !isEditMode"
+          :recipe="recipe"
+          @updated="replaceRecipe"
+        />
         <RecipeJsonEditor
           v-if="isEditJSON"
           v-model="recipe"
@@ -223,6 +228,7 @@ import RecipePageParseDialog from "./RecipePageParts/RecipePageParseDialog.vue";
 import RecipePageScale from "./RecipePageParts/RecipePageScale.vue";
 import RecipePageInfoEditor from "./RecipePageParts/RecipePageInfoEditor.vue";
 import RecipePageComments from "./RecipePageParts/RecipePageComments.vue";
+import RecipeCoachTools from "./RecipePageParts/RecipeCoachTools.vue";
 import RecipePrintContainer from "~/components/Domain/Recipe/RecipePrintContainer.vue";
 import {
   clearPageState,
@@ -413,6 +419,11 @@ async function saveRecipe() {
       router.replace(`/g/${groupSlug.value}/r/` + data.slug);
     }
   }
+}
+
+function replaceRecipe(updated: Recipe) {
+  recipe.value = updated as NoUndefinedField<Recipe>;
+  originalRecipe.value = deepCopy(recipe.value);
 }
 
 async function saveParsedIngredients(ingredients: NoUndefinedField<RecipeIngredient[]>) {

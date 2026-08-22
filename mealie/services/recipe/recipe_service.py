@@ -12,6 +12,7 @@ import sqlalchemy as sa
 from fastapi import UploadFile
 
 from mealie.core import exceptions
+from mealie.db.models.recipe.revision import RecipeRevision
 from mealie.lang.providers import Translator
 from mealie.pkgs import cache
 from mealie.repos.all_repositories import get_repositories
@@ -19,6 +20,7 @@ from mealie.repos.repository_factory import AllRepositories
 from mealie.repos.repository_generic import RepositoryGeneric
 from mealie.schema.household.household import HouseholdInDB, HouseholdRecipeUpdate
 from mealie.schema.recipe.recipe import CreateRecipe, Recipe, create_recipe_slug
+from mealie.schema.recipe.recipe_coach import RecipeRevisionOut
 from mealie.schema.recipe.recipe_ingredient import RecipeIngredient
 from mealie.schema.recipe.recipe_settings import RecipeSettings
 from mealie.schema.recipe.recipe_step import RecipeStep
@@ -55,6 +57,57 @@ class RecipeServiceBase(BaseService):
 
 
 class RecipeService(RecipeServiceBase):
+    def _create_revision(self, recipe: Recipe, source: str) -> None:
+        if not recipe.id:
+            return
+
+        revision = RecipeRevision(
+            session=self.repos.session,
+            recipe_id=recipe.id,
+            user_id=self.user.id,
+            source=source,
+            snapshot=recipe.model_dump(mode="json", by_alias=True),
+        )
+        self.repos.session.add(revision)
+        self.repos.session.flush()
+
+        # Retain a useful history without allowing unattended edits to grow forever.
+        stale_ids = self.repos.session.scalars(
+            sa.select(RecipeRevision.id)
+            .where(RecipeRevision.recipe_id == recipe.id)
+            .order_by(RecipeRevision.created_at.desc())
+            .offset(50)
+        ).all()
+        if stale_ids:
+            self.repos.session.execute(sa.delete(RecipeRevision).where(RecipeRevision.id.in_(stale_ids)))
+
+    def get_revisions(self, slug_or_id: str | UUID) -> list[RecipeRevisionOut]:
+        recipe = self.get_one(slug_or_id)
+        revisions = self.repos.session.scalars(
+            sa.select(RecipeRevision)
+            .where(RecipeRevision.recipe_id == recipe.id)
+            .order_by(RecipeRevision.created_at.desc())
+        ).all()
+        return [RecipeRevisionOut.model_validate(revision, from_attributes=True) for revision in revisions]
+
+    def restore_revision(self, slug_or_id: str | UUID, revision_id: UUID) -> Recipe:
+        recipe = self.get_one(slug_or_id)
+        revision = self.repos.session.scalar(
+            sa.select(RecipeRevision).where(
+                RecipeRevision.id == revision_id,
+                RecipeRevision.recipe_id == recipe.id,
+            )
+        )
+        if revision is None:
+            raise exceptions.NoEntryFound("Recipe revision not found.")
+
+        restored = Recipe.model_validate(revision.snapshot)
+        restored.id = recipe.id
+        restored.user_id = recipe.user_id
+        restored.group_id = recipe.group_id
+        restored.household_id = recipe.household_id
+        return self.update_one(recipe.slug, restored, revision_source="restore")
+
     def _get_recipe(self, data: str | UUID, key: str | None = None) -> Recipe:
         recipe = self.group_recipes.get_one(data, key)
         if recipe is None:
@@ -488,8 +541,9 @@ class RecipeService(RecipeServiceBase):
 
         return update_data
 
-    def update_one(self, slug_or_id: str | UUID, update_data: Recipe) -> Recipe:
+    def update_one(self, slug_or_id: str | UUID, update_data: Recipe, *, revision_source: str = "manual") -> Recipe:
         recipe = self._pre_update_check(slug_or_id, update_data)
+        self._create_revision(recipe, revision_source)
 
         update_data = self._remove_non_existent_ingredient_references(update_data)
         update_data = self._resolve_ingredient_sub_recipes(update_data)
@@ -519,8 +573,9 @@ class RecipeService(RecipeServiceBase):
         self.group_recipes.delete_image(slug)
         return None
 
-    def patch_one(self, slug_or_id: str | UUID, patch_data: Recipe) -> Recipe:
+    def patch_one(self, slug_or_id: str | UUID, patch_data: Recipe, *, revision_source: str = "manual") -> Recipe:
         recipe: Recipe = self._pre_update_check(slug_or_id, patch_data)
+        self._create_revision(recipe, revision_source)
 
         new_data = self.group_recipes.patch(recipe.slug, patch_data.model_dump(exclude_unset=True))
 

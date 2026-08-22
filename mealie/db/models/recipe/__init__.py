@@ -8,6 +8,7 @@ from .note import *
 from .nutrition import *
 from .recipe import *
 from .recipe_timeline import *
+from .revision import *
 from .settings import *
 from .shared import *
 from .tag import *
