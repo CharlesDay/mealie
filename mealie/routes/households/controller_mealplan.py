@@ -239,7 +239,7 @@ class GroupMealplanController(BaseCrudController):
         if response is None:
             return PantryPlanResponse(pantry_foods=pantry_foods, suggestions=[])
 
-        by_id = {item.recipe.id: item for item in candidates}
+        by_id = {str(item.recipe.id): item for item in candidates}
         valid_dates = set(dates)
         seen_dates: set[date] = set()
         suggestions: list[PantryPlanSuggestion] = []

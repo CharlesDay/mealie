@@ -68,7 +68,10 @@ class PantryPlanRequest(MealieModel):
 
 
 class PantryPlanAIChoice(OpenAIBase):
-    recipe_id: UUID4
+    # OpenAI structured outputs does not accept Pydantic's nonstandard
+    # "uuid4" JSON-schema format. The controller only accepts IDs from its
+    # already-filtered candidate map, so a plain string remains safe here.
+    recipe_id: str
     date: date
     entry_type: PlanEntryType = PlanEntryType.dinner
     reason: str
