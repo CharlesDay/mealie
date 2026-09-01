@@ -19,6 +19,7 @@ import {
   mdiBookOpenPageVariant,
   mdiBookOutline,
   mdiBowlMixOutline,
+  mdiBroom,
   mdiBullhornVariant,
   mdiCalendar,
   mdiCalendarMultiselect,
@@ -139,6 +140,7 @@ import {
   mdiWindowClose,
   mdiWrench,
   mdiHandWaveOutline,
+  mdiProgressCheck,
 
 } from "@mdi/js";
 
@@ -175,6 +177,7 @@ export const icons = {
   checkboxMultipleBlankOutline: mdiCheckboxMultipleBlankOutline,
   checkboxMultipleMarkedOutline: mdiCheckboxMultipleOutline,
   checkboxMarkedCircle: mdiCheckboxMarkedCircle,
+  progressCheck: mdiProgressCheck,
   chefHat: mdiChefHat,
   clipboardCheck: mdiClipboardCheck,
   clockOutline: mdiClockTimeFourOutline,
@@ -268,6 +271,7 @@ export const icons = {
   createAlt: mdiPlus,
   create: mdiPlusCircle,
   delete: mdiDelete,
+  broom: mdiBroom,
   save: mdiContentSave,
   update: mdiContentSaveEdit,
   edit: mdiSquareEditOutline,
